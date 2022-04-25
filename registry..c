@@ -17,12 +17,12 @@
 #define MAX_FILENAME_LEN 255
 
 
-struct peer_entry {
-    uint32_t id;                             // ID of peer
-    int socket_descriptor;                   // Socket descriptor for connection to peer
-    char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
-    struct sockaddr_in address;              // Contains IP address and port number
-};
+// struct peer_entry {
+//     uint32_t id;                             // ID of peer
+//     int socket_descriptor;                   // Socket descriptor for connection to peer
+//     char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
+//     struct sockaddr_in address;              // Contains IP address and port number
+// };
 
 
 
@@ -37,13 +37,13 @@ struct peer_entry {
 int bind_and_listen(const char *service);
 
 int main(void) {
-	char buf[MAX_LINE];
+	char buf[MAX_FILENAME_LEN];
 	int s, new_s;
 	int len;
 
 
 	fd_set readfds;
-	int clients[5];
+	//int clients[5];
 	int returnval = 0;
 
 	/* Bind socket to local interface and passive open */
@@ -54,7 +54,7 @@ int main(void) {
    FD_ZERO(&readfds);
   
 	//remember to add client to set) in while
-  clients[0] = s;
+ // clients[0] = s;
 	/* Wait for connection, then receive and print text */
 	while ( 1 ) {
 		
@@ -69,7 +69,7 @@ int main(void) {
 					perror( "stream-talk-server: accept" );
                  }
 
-            clients[1] = new_s;
+           // clients[1] = new_s;
 				
 				if(FD_ISSET(new_s, &readfds)){
 					while ( (len = recv( new_s, buf, sizeof( buf ), 0 ) ) ) {
@@ -79,9 +79,8 @@ int main(void) {
 								close( s );
 								exit( 1 );
 								}
-								printf("selectserver: new connection from %s on "
-                                "socket %d\n");
-                               fputs( buf, stdout );
+								printf("JOIN");
+                                fputs( buf, stdout );
 								}
 
 								}
@@ -94,14 +93,6 @@ int main(void) {
 }
 return 0;
  }
-
-
-
-
-
-
-
-
 
 
 
