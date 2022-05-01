@@ -17,13 +17,12 @@
 #define MAX_FILENAME_LEN 255
 
 
-// struct peer_entry {
-//     uint32_t id;                             // ID of peer
-//     int socket_descriptor;                   // Socket descriptor for connection to peer
-//     char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
-//     struct sockaddr_in address;              // Contains IP address and port number
-// };
-
+struct peer_entry {
+    uint32_t id;                             // ID of peer
+    int socket_descriptor;                   // Socket descriptor for connection to peer
+    char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
+    struct sockaddr_in address;              // Contains IP address and port number
+};
 
 
 /*
@@ -36,63 +35,121 @@
 
 int bind_and_listen(const char *service);
 
-int main(void) {
-	char buf[MAX_FILENAME_LEN];
-	int s, new_s;
-	int len;
+int main(int argc, char *argv[]) {
 
-
-	fd_set readfds;
-	//int clients[5];
-	int returnval = 0;
+    struct peer_entry peer;
+	//int returnval = 0;
+	//listening socket
+	int s;
+	fd_set master;    // master file descriptor list
+    fd_set read_fds;  // temp file descriptor list for select()
+    int fdmax;        // maximum file descriptor number
+	socklen_t addrlen;
+	struct sockaddr_storage remoteaddr; // client address
+	int lenofmessage = 0; 
+	uint32_t buf[3];
 
 	/* Bind socket to local interface and passive open */
-	if ((s = bind_and_listen( SERVER_PORT ) ) < 0 ) {
+	if ((s = bind_and_listen( SERVER_PORT) ) < 0 ){
 		exit( 1 );
 	}
 
-   FD_ZERO(&readfds);
+  // clear the master and temp sets
+   FD_ZERO(&master); 
+   FD_ZERO(&read_fds);
   
-	//remember to add client to set) in while
- // clients[0] = s;
+   //add s to filedescriptor set
+   FD_SET(s, &master);
+   //keep track of biggest file descriptor
+   fdmax = s;
+
 	/* Wait for connection, then receive and print text */
 	while ( 1 ) {
-		
 
-		returnval = select(FD_SETSIZE, &readfds, NULL, NULL, NULL);
+       read_fds = master;
+		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("select");
+            exit(1);
+        }
+         
+      // run through the existing connections looking for data to read
+        for(int i = 0; i <= fdmax; i++) {
+			if (FD_ISSET(i, &read_fds)) { // we got one!!
+                if (i == s) {
+				 // handle new connections
+				 addrlen = sizeof(&remoteaddr);
 
-        if(returnval > 0){
-
-          if(FD_ISSET(s, &readfds)){
-				
-				if ((new_s = accept( s, NULL, NULL ) ) < 0 ) {
+    
+				//Accepting a connection
+				if ((peer.socket_descriptor = accept( s, (struct sockaddr *)&remoteaddr, &addrlen) ) < 0 ) {
 					perror( "stream-talk-server: accept" );
+					close(s);
+					exit(1);
                  }
+				 else{
+					 FD_SET((peer.socket_descriptor), &master); // add to master set
+                        if ((peer.socket_descriptor) > fdmax) {    // keep track of the max
+                            fdmax = (peer.socket_descriptor);
+                        }
+						//have to extract from new connection
 
-           // clients[1] = new_s;
-				
-				if(FD_ISSET(new_s, &readfds)){
-					while ( (len = recv( new_s, buf, sizeof( buf ), 0 ) ) ) {
+				 }
+				}
+				else{
+                  //have to recv data
+					while ((lenofmessage = recv(i, buf, sizeof(buf), 0 )) ) {
 						     //connection is closed
-							if ( len < 0 ) {
+							if ( lenofmessage < 0 ) {
 								perror( "streak-talk-server: recv" );
 								close( s );
+								FD_CLR(i, &master); // remove from master set
 								exit( 1 );
 								}
-								printf("JOIN");
-                                fputs( buf, stdout );
+							else{
+								if(lenofmessage == 5)
+								if(buf[0] == 0){
+									printf("JOIN succesful");
+									uint32_t id = ntohl(buf[1]); 
+									memcpy(&peer.id, &id, sizeof(uint32_t));
 								}
 
-								}
-							}
+						// 		// we got some data from a client
+                        //         for(int j = 0; j <= fdmax; j++) {
+                        //         // send to everyone!
+                        //         if (FD_ISSET(j, &master)) {
+                        //         // except the listener and ourselves
+                        //         if (j != s && j != i) {
+                        //             if (send(j, buf, lenofmessage, 0) == -1){
+						// 			 perror("send");
+						// 		}
+
+						// 		}
+						// 	}
+						// }
 					}
-	     else{
-			  close( s );
-			  exit( 1 );
+				}
 			}
+		}
+	}	     
 }
+
 return 0;
+ 
  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
