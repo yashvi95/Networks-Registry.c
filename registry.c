@@ -10,19 +10,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #define SERVER_PORT "5432"
 #define MAX_PENDING 5
 #define MAX_FILES 10
 #define MAX_FILENAME_LEN 255
 
-
-struct peer_entry {
-    uint32_t id;                             // ID of peer
-    int socket_descriptor;                   // Socket descriptor for connection to peer
-    char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
-    struct sockaddr_in address;              // Contains IP address and port number
-};
 
 
 /*
@@ -33,11 +28,21 @@ struct peer_entry {
  * accept and closing the socket.
  */
 
+struct peer_entry {
+    uint32_t id;                             // ID of peer
+    int socket_descriptor;                   // Socket descriptor for connection to peer
+    char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
+    struct sockaddr_in address;              // Contains IP address and port number
+};
+
+
 int bind_and_listen(const char *service);
 
 int main(int argc, char *argv[]) {
 
-    struct peer_entry peer;
+    
+	struct peer_entry Peers[5];
+	int currPeers = 0;
 	//int returnval = 0;
 	//listening socket
 	int s;
@@ -50,109 +55,121 @@ int main(int argc, char *argv[]) {
 	uint32_t buf[3];
 
 	/* Bind socket to local interface and passive open */
-	if ((s = bind_and_listen( SERVER_PORT) ) < 0 ){
+	if ((s = bind_and_listen(SERVER_PORT) ) < 0 ) {
 		exit( 1 );
 	}
 
-  // clear the master and temp sets
-   FD_ZERO(&master); 
-   FD_ZERO(&read_fds);
-  
-   //add s to filedescriptor set
-   FD_SET(s, &master);
-   //keep track of biggest file descriptor
-   fdmax = s;
+  	// clear the master and temp sets
+    FD_ZERO(&master); 
+    FD_ZERO(&read_fds);
+    //add s to filedescriptor set
+    FD_SET(s, &master);
+
+    //keep track of biggest file descriptor
+    fdmax = s;
 
 	/* Wait for connection, then receive and print text */
 	while ( 1 ) {
 
-       read_fds = master;
-		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+    	read_fds = master;	// copy master list for select() check
+		if ( select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1 ) {	//get list of available sockets
             perror("select");
             exit(1);
         }
          
-      // run through the existing connections looking for data to read
-        for(int i = 0; i <= fdmax; i++) {
-			if (FD_ISSET(i, &read_fds)) { // we got one!!
-                if (i == s) {
-				 // handle new connections
-				 addrlen = sizeof(&remoteaddr);
+      	// run through the existing connections looking for data to read
+        for ( int i = 0; i <= fdmax; i++ ) {
 
+			if (FD_ISSET(i, &read_fds)) { // fd at i is ready to read
+
+                if (i == s) {	// if a new connection is trying to be made on our primary listening socket (new peer)
+					// handle new peer connection
+
+					//recv( s, buf, sizeof(buf), 0 );
+					if (buf[0] == 0) {	// if message is to JOIN
+						//could check if Peers is full first and refuse connection if so
+						struct peer_entry newPeer;
+						addrlen = sizeof(&remoteaddr);
     
-				//Accepting a connection
-				if ((peer.socket_descriptor = accept( s, (struct sockaddr *)&remoteaddr, &addrlen) ) < 0 ) {
-					perror( "stream-talk-server: accept" );
-					close(s);
-					exit(1);
-                 }
-				 else{
-					 FD_SET((peer.socket_descriptor), &master); // add to master set
-                        if ((peer.socket_descriptor) > fdmax) {    // keep track of the max
-                            fdmax = (peer.socket_descriptor);
-                        }
-						//have to extract from new connection
+						//Accepting a connection
+						if ((newPeer.socket_descriptor = accept( s, (struct sockaddr *)&remoteaddr, &addrlen) ) < 0 ) {
+							perror( "stream-talk-server: accept" );	//error accepting new connection
+							close(s);
+							exit(1);
 
-				 }
-				}
-				else{
-                  //have to recv data
-					while ((lenofmessage = recv(i, buf, sizeof(buf), 0 )) ) {
-						     //connection is closed
-							if ( lenofmessage < 0 ) {
-								perror( "streak-talk-server: recv" );
-								close( s );
-								FD_CLR(i, &master); // remove from master set
-								exit( 1 );
+						} else {	// if accept successful
+							FD_SET((newPeer.socket_descriptor), &master); // add to master set
+							uint32_t id = ntohl(buf[1]); 
+							memcpy(&newPeer.id, &id, sizeof(uint32_t));
+
+							//struct sockaddr_in addr;
+							socklen_t len = sizeof(newPeer.address);
+							int ret = getpeername(s, (struct sockaddr*)&newPeer.address, &len);
+
+							Peers[currPeers] = newPeer;
+							currPeers++;
+							printf("TEST] JOIN %d\n", newPeer.id);
+
+							if ((newPeer.socket_descriptor) > fdmax) {    // keep track of the max
+								fdmax = (newPeer.socket_descriptor);
+							}
+						}
+					}
+				} else {	// other peer is sending data through it's connection socket
+
+					uint32_t dataBuff[1200];
+					//convert to host byte order
+
+					if ((lenofmessage = recv( i, dataBuff, sizeof(dataBuff), 0 )) > 0 ) {
+
+						if ( buf[0] == 1 ) {	// PUBLISH request
+						// comes in as Network order
+
+							//find which peer is connected to socket i
+							int peerIndex= 0;
+							for (; peerIndex < 5; peerIndex++) {
+								if ( Peers[peerIndex].socket_descriptor == i ) {
+									break;
 								}
-							else{
-								if(lenofmessage == 5)
-								if(buf[0] == 0){
-									printf("JOIN succesful");
-									uint32_t id = ntohl(buf[1]); 
-									memcpy(&peer.id, &id, sizeof(uint32_t));
+							}
+
+							uint32_t numFiles = ntohl(dataBuff[1]);
+							uint32_t pointer = 2;
+							uint32_t counter = pointer;
+
+							printf("TEST] PUBLISH %d ", numFiles);
+							for (uint32_t i= 0; i< numFiles; i++) {
+
+								while ( dataBuff[counter] != '\0') {
+									counter++;
 								}
+								memcpy(dataBuff+pointer, &Peers[peerIndex].files[i][0], (sizeof(uint32_t)*counter+1));
+								pointer = counter+1;
+								printf("%s", Peers[peerIndex].files[i][0]);
+							}
+							printf("\n");
 
-						// 		// we got some data from a client
-                        //         for(int j = 0; j <= fdmax; j++) {
-                        //         // send to everyone!
-                        //         if (FD_ISSET(j, &master)) {
-                        //         // except the listener and ourselves
-                        //         if (j != s && j != i) {
-                        //             if (send(j, buf, lenofmessage, 0) == -1){
-						// 			 perror("send");
-						// 		}
 
-						// 		}
-						// 	}
-						// }
+
+						} else if (buf[0] == 2 ) {// SEARCH request
+						// response must by in Network byte order, print locally in Host byte order
+
+						}
+
+
+					} else {	// error or no data received, close connection
+						perror( "streak-talk-server: recv" );
+						close( i );
+						FD_CLR(i, &master); // remove from master set
+						//remove from Peer[] set
+						exit( 1 );
 					}
 				}
 			}
 		}
-	}	     
+	}
+	return 0;	     
 }
-
-return 0;
- 
- }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 int bind_and_listen( const char *service ) {
