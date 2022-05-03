@@ -84,21 +84,31 @@ int main(int argc, char *argv[]) {
 
                 if (i == s) {	// if a new connection is trying to be made on our primary listening socket (new peer)
 					// handle new peer connection
-
-					//recv( s, buf, sizeof(buf), 0 );
-					if (buf[0] == 0) {	// if message is to JOIN
-						//could check if Peers is full first and refuse connection if so
-						struct peer_entry newPeer;
-						addrlen = sizeof(&remoteaddr);
-    
-						//Accepting a connection
-						if ((newPeer.socket_descriptor = accept( s, (struct sockaddr *)&remoteaddr, &addrlen) ) < 0 ) {
+					addrlen = sizeof(&remoteaddr);
+					//Accepting a connection
+					int newSocket;
+					if ((newSocket = accept( s, (struct sockaddr *)&remoteaddr, &addrlen) ) < 0 ) {
 							perror( "stream-talk-server: accept" );	//error accepting new connection
 							close(s);
 							exit(1);
 
-						} else {	// if accept successful
-							FD_SET((newPeer.socket_descriptor), &master); // add to master set
+					} else {	// if accept successful
+						FD_SET((newSocket), &master); // add to master set
+						if ((newSocket) > fdmax) {    // keep track of the max
+							fdmax = (newSocket);
+						}
+					}
+					//}
+				} else {	// other peer is sending data through it's connection socket
+
+					uint32_t dataBuff[1200];
+					//convert to host byte order
+
+					if ((lenofmessage = recv( i, dataBuff, sizeof(dataBuff), 0 )) > 0 ) {
+
+						if (dataBuff[0] == 0) {	// JOIN request
+							//could check if Peers is full first and refuse connection if so
+							struct peer_entry newPeer;
 							uint32_t id = ntohl(buf[1]); 
 							memcpy(&newPeer.id, &id, sizeof(uint32_t));
 
@@ -110,29 +120,17 @@ int main(int argc, char *argv[]) {
 							currPeers++;
 							printf("TEST] JOIN %d\n", newPeer.id);
 
-							if ((newPeer.socket_descriptor) > fdmax) {    // keep track of the max
-								fdmax = (newPeer.socket_descriptor);
-							}
-						}
-					}
-				} else {	// other peer is sending data through it's connection socket
-
-					uint32_t dataBuff[1200];
-					//convert to host byte order
-
-					if ((lenofmessage = recv( i, dataBuff, sizeof(dataBuff), 0 )) > 0 ) {
-
-						if ( buf[0] == 1 ) {	// PUBLISH request
+     					} else if ( dataBuff[0] == 1 ) {	// PUBLISH request
 						// comes in as Network order
 
 							//find which peer is connected to socket i
-							int peerIndex= 0;
-							for (; peerIndex < 5; peerIndex++) {
+							int peerIndex;
+							for (peerIndex= 0; peerIndex < currPeers; peerIndex++) {
 								if ( Peers[peerIndex].socket_descriptor == i ) {
+									peerIndex = i;
 									break;
 								}
 							}
-
 							uint32_t numFiles = ntohl(dataBuff[1]);
 							uint32_t pointer = 2;
 							uint32_t counter = pointer;
@@ -143,16 +141,17 @@ int main(int argc, char *argv[]) {
 								while ( dataBuff[counter] != '\0') {
 									counter++;
 								}
-								memcpy(dataBuff+pointer, &Peers[peerIndex].files[i][0], (sizeof(uint32_t)*counter+1));
-								pointer = counter+1;
+								memcpy(&(Peers[peerIndex].files[i][0]), &dataBuff[pointer], (sizeof(uint32_t)*counter+1));
+								pointer = counter;
 								printf("%s", Peers[peerIndex].files[i][0]);
 							}
 							printf("\n");
 
 
-
-						} else if (buf[0] == 2 ) {// SEARCH request
+						} else if (dataBuff[0] == 2 ) {// SEARCH request
 						// response must by in Network byte order, print locally in Host byte order
+
+						//strcmp to files in peer struct
 
 						}
 
