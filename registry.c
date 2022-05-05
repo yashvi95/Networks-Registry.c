@@ -33,6 +33,7 @@ struct peer_entry {
     int socket_descriptor;                   // Socket descriptor for connection to peer
     char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
     struct sockaddr_in address;              // Contains IP address and port number
+	uint32_t numFile;
 };
 
 
@@ -112,10 +113,10 @@ int main(int argc, char *argv[]) {
 							uint8_t id = ntohl(dataBuff[1]); 
 							memcpy(&newPeer.id, &id, sizeof(uint8_t));
 							newPeer.socket_descriptor = i;
-
+							newPeer.numFile= 0;
 							//struct sockaddr_in addr;
 							socklen_t len = sizeof(newPeer.address);
-							int ret = getpeername(s, (struct sockaddr*)&newPeer.address, &len);
+							int ret = getpeername(i, (struct sockaddr*)&newPeer.address, &len);
 
 							Peers[currPeers] = newPeer;
 							currPeers++;
@@ -135,6 +136,7 @@ int main(int argc, char *argv[]) {
 							uint32_t files;
 							memcpy(&files, &dataBuff[1], sizeof(uint32_t));
 							uint32_t numFiles = ntohl(files);
+							Peers[peerIndex].numFile = numFiles;
 							uint8_t pointer = 5;
 							uint8_t counter = pointer;
 						
@@ -153,6 +155,27 @@ int main(int argc, char *argv[]) {
 
 						} else if (dataBuff[0] == 2 ) {// SEARCH request
 						// response must by in Network byte order, print locally in Host byte order
+							int counter;
+							while ( dataBuff[1] != '\0') {
+									counter++;
+								}
+							char fileName[counter+1];
+							memcpy(&fileName, &dataBuff[1], sizeof(fileName));
+
+							for ( int j= 0; i< currPeers; j++ ) {
+								
+								if ((Peers[j].socket_descriptor != i) && (Peers[j].numFile != 0) ) {
+									
+									for ( uint32_t k= 0; k< Peers[j].numFile; k++ ) {
+										if ( strcmp(&fileName[0], &(Peers[j].files[k][0])) == 0) {
+											printf("file found\n");
+										} else {
+											printf("not found\n");
+										}
+										
+									}
+								}
+							}
 
 						//strcmp to files in peer struct
 
