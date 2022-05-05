@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
 					//}
 				} else {	// other peer is sending data through it's connection socket
 
-					uint32_t dataBuff[1200];
+					uint8_t dataBuff[1200];
 					//convert to host byte order
 
 					if ((lenofmessage = recv( i, dataBuff, sizeof(dataBuff), 0 )) > 0 ) {
@@ -109,8 +109,9 @@ int main(int argc, char *argv[]) {
 						if (dataBuff[0] == 0) {	// JOIN request
 							//could check if Peers is full first and refuse connection if so
 							struct peer_entry newPeer;
-							uint32_t id = ntohl(buf[1]); 
-							memcpy(&newPeer.id, &id, sizeof(uint32_t));
+							uint8_t id = ntohl(dataBuff[1]); 
+							memcpy(&newPeer.id, &id, sizeof(uint8_t));
+							newPeer.socket_descriptor = i;
 
 							//struct sockaddr_in addr;
 							socklen_t len = sizeof(newPeer.address);
@@ -131,19 +132,21 @@ int main(int argc, char *argv[]) {
 									break;
 								}
 							}
-							uint32_t numFiles = ntohl(dataBuff[1]);
-							uint32_t pointer = 2;
-							uint32_t counter = pointer;
-
-							printf("TEST] PUBLISH %d ", numFiles);
-							for (uint32_t i= 0; i< numFiles; i++) {
+							uint32_t files;
+							memcpy(&files, &dataBuff[1], sizeof(uint32_t));
+							uint32_t numFiles = ntohl(files);
+							uint8_t pointer = 5;
+							uint8_t counter = pointer;
+						
+							printf("TEST] PUBLISH %u ", numFiles);
+							for ( uint32_t i= 0; i< numFiles; i++) {
 
 								while ( dataBuff[counter] != '\0') {
 									counter++;
 								}
-								memcpy(&(Peers[peerIndex].files[i][0]), &dataBuff[pointer], (sizeof(uint32_t)*counter+1));
-								pointer = counter;
-								printf("%s", Peers[peerIndex].files[i][0]);
+								memcpy(&(Peers[peerIndex].files[i][0]), &dataBuff[pointer], ((sizeof(uint8_t))*counter+1));
+								pointer = counter+1;
+								printf("%s ", &(Peers[peerIndex].files[i][0]));
 							}
 							printf("\n");
 
