@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
 	socklen_t addrlen;
 	struct sockaddr_storage remoteaddr; // client address
 	int lenofmessage = 0; 
-	uint32_t buf[3];
+	//uint32_t buf[3];
 
 	/* Bind socket to local interface and passive open */
 	if ((s = bind_and_listen(SERVER_PORT) ) < 0 ) {
@@ -117,10 +117,13 @@ int main(int argc, char *argv[]) {
 							//struct sockaddr_in addr;
 							socklen_t len = sizeof(newPeer.address);
 							int ret = getpeername(i, (struct sockaddr*)&newPeer.address, &len);
+							if(ret == -1){
+								printf("error");
+							}
 
 							Peers[currPeers] = newPeer;
 							currPeers++;
-							printf("TEST] JOIN %d\n", newPeer.id);
+							printf("TEST] JOIN %d\n", htons(newPeer.address.sin_port));
 
      					} else if ( dataBuff[0] == 1 ) {	// PUBLISH request
 						// comes in as Network order
@@ -153,24 +156,46 @@ int main(int argc, char *argv[]) {
 							printf("\n");
 
 
-						} else if (dataBuff[0] == 2 ) {// SEARCH request
+						} else if (dataBuff[0] == 2) {// SEARCH request
 						// response must by in Network byte order, print locally in Host byte order
-							int counter;
-							while ( dataBuff[1] != '\0') {
+						    //find which peer is connected to socket i
+							int peerIndex;
+							for (peerIndex= 0; peerIndex < currPeers; peerIndex++) {
+								if ( Peers[peerIndex].socket_descriptor == i ) {
+									peerIndex = i;
+									break;
+								}
+							}
+							int counter = 1;
+
+							while (dataBuff[counter] != '\0') {
 									counter++;
 								}
 							char fileName[counter+1];
-							memcpy(&fileName, &dataBuff[1], sizeof(fileName));
+							memcpy(&fileName, &dataBuff[1], sizeof(counter+1));
+							
 
-							for ( int j= 0; i< currPeers; j++ ) {
+							for (int j = 0; j < currPeers; j++ ) {
 								
-								if ((Peers[j].socket_descriptor != i) && (Peers[j].numFile != 0) ) {
+								if ((Peers[j].socket_descriptor != peerIndex) && (Peers[j].numFile != 0)) {
 									
-									for ( uint32_t k= 0; k< Peers[j].numFile; k++ ) {
-										if ( strcmp(&fileName[0], &(Peers[j].files[k][0])) == 0) {
-											printf("file found\n");
+									for (uint32_t k = 0; k < Peers[j].numFile; k++ ) {
+										//not sure if it's actually comparing
+
+										if (strncmp(&fileName[0], &(Peers[j].files[k][0]), sizeof(fileName) == 0)){
+											printf("found");
+											//just setup the send message, 4bytes, 4bytes, 2bytes
+											//not sure what the first argument in the send should be
+											uint8_t mesgpeer[10];
+											memcpy(&mesgpeer[0],&Peers[j].id,4);
+											memcpy(&mesgpeer[3],&Peers[j].address.sin_addr,4);
+											memcpy(&mesgpeer[7],&Peers[j].address.sin_port,2);
+
+											send(Peers[j].socket_descriptor,mesgpeer,sizeof(mesgpeer),0);
+
+											
 										} else {
-											printf("not found\n");
+											printf("not found");
 										}
 									}
 								}
