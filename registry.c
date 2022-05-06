@@ -139,11 +139,12 @@ int main(int argc, char *argv[]) {
 							uint32_t files;
 							memcpy(&files, &dataBuff[1], sizeof(uint32_t));
 							uint32_t numFiles = ntohl(files);
+
 							Peers[peerIndex].numFile = numFiles;
 							uint8_t pointer = 5;
 							uint8_t counter = pointer;
 						
-							printf("TEST] PUBLISH %u ", numFiles);
+							printf("TEST] PUBLISH %u ", Peers[peerIndex].numFile);
 							for ( uint32_t i= 0; i< numFiles; i++) {
 
 								while ( dataBuff[counter] != '\0') {
@@ -166,23 +167,35 @@ int main(int argc, char *argv[]) {
 									break;
 								}
 							}
-							int counter = 1;
+							uint8_t counter = 1;
 
 							while (dataBuff[counter] != '\0') {
 									counter++;
 								}
 							char fileName[counter+1];
-							memcpy(&fileName, &dataBuff[1], sizeof(counter+1));
-							
+							memcpy(&fileName, &dataBuff[1], (sizeof(uint8_t))*counter+1);
+							printf("Searching for   %s   \n", fileName);
 
-							for (int j = 0; j < currPeers; j++ ) {
-								
-								if ((Peers[j].socket_descriptor != peerIndex) && (Peers[j].numFile != 0)) {
+
+							printf("looking for peer %d \n", currPeers);
+							
+							for (int j = 0; j < currPeers; j++) {
+								printf("looking for peer %d \n", j);
+
+								uint32_t number = 0;
+
+								if ((Peers[j].socket_descriptor != i) && (Peers[j].numFile != number)) {
 									
-									for (uint32_t k = 0; k < Peers[j].numFile; k++ ) {
+									int index = Peers[j].numFile;
+									
+									printf("looking for numfiles %u \n", Peers[j].numFile);
+									
+									for (int k = 0; k < index; k++) {
+										printf("Looking through files %u \n", k);
+
 										//not sure if it's actually comparing
 
-										if (strncmp(&fileName[0], &(Peers[j].files[k][0]), sizeof(fileName) == 0)){
+										if (strncmp(fileName, (Peers[j].files[k]), sizeof(fileName) == 0)){
 											printf("found");
 											//just setup the send message, 4bytes, 4bytes, 2bytes
 											//not sure what the first argument in the send should be
@@ -191,20 +204,26 @@ int main(int argc, char *argv[]) {
 											memcpy(&mesgpeer[3],&Peers[j].address.sin_addr,4);
 											memcpy(&mesgpeer[7],&Peers[j].address.sin_port,2);
 
-											send(Peers[j].socket_descriptor,mesgpeer,sizeof(mesgpeer),0);
+											send(Peers[peerIndex].socket_descriptor,mesgpeer,sizeof(mesgpeer),0);
 
 											
-										} else {
+										} 
+									
+										else {
 											printf("not found");
 										}
-										
 									}
-								}
+										
+
+							      }
+
+								 else{
+									 printf("not correct peer \n");
+								 }
+								
 							}
 
 						//strcmp to files in peer struct
-
-						}
 
 
 					} else {	// error or no data received, close connection
@@ -217,6 +236,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
+	}
 	}
 	return 0;	     
 }
