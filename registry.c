@@ -28,21 +28,21 @@
  * accept and closing the socket.
  */
 
-struct peer_entry {
+typedef struct peer_entry {
     uint32_t id;                             // ID of peer
     int socket_descriptor;                   // Socket descriptor for connection to peer
     char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
     struct sockaddr_in address;              // Contains IP address and port number
 	uint32_t numFile;
-};
+} peer_entry;
 
 
 int bind_and_listen(const char *service);
 
 int main(int argc, char *argv[]) {
 
-    
-	struct peer_entry Peers[5];
+    peer_entry* Peers = malloc(sizeof(peer_entry[5]));
+	//struct peer_entry Peers[5];
 	int currPeers = 0;
 	//int returnval = 0;
 	//listening socket
@@ -99,7 +99,6 @@ int main(int argc, char *argv[]) {
 							fdmax = (newSocket);
 						}
 					}
-					//}
 				} else {	// other peer is sending data through it's connection socket
 
 					uint8_t dataBuff[1200];
@@ -109,21 +108,21 @@ int main(int argc, char *argv[]) {
 
 						if (dataBuff[0] == 0) {	// JOIN request
 							//could check if Peers is full first and refuse connection if so
-							struct peer_entry newPeer;
+							peer_entry* newPeer = malloc(sizeof(peer_entry));
 							uint8_t id = ntohl(dataBuff[1]); 
-							memcpy(&newPeer.id, &id, sizeof(uint8_t));
-							newPeer.socket_descriptor = i;
-							newPeer.numFile= 0;
+							memcpy(&(newPeer->id), &id, sizeof(uint8_t));
+							newPeer->socket_descriptor = i;
+							newPeer->numFile= 0;
 							//struct sockaddr_in addr;
-							socklen_t len = sizeof(newPeer.address);
-							int ret = getpeername(i, (struct sockaddr*)&newPeer.address, &len);
+							socklen_t len = sizeof(newPeer->address);
+							int ret = getpeername(i, (struct sockaddr*)&(newPeer->address), &len);
 							if(ret == -1){
 								printf("error");
 							}
-
-							Peers[currPeers] = newPeer;
+							memcpy(&(Peers[currPeers]), &newPeer, sizeof(peer_entry));
+							//Peers[currPeers] = newPeer;
 							currPeers++;
-							printf("TEST] JOIN %d\n", htons(newPeer.address.sin_port));
+							printf("TEST] JOIN %d\n", htons(newPeer->address.sin_port));
 
      					} else if ( dataBuff[0] == 1 ) {	// PUBLISH request
 						// comes in as Network order
@@ -140,19 +139,20 @@ int main(int argc, char *argv[]) {
 							memcpy(&files, &dataBuff[1], sizeof(uint32_t));
 							uint32_t numFiles = ntohl(files);
 
-							Peers[peerIndex].numFile = numFiles;
+							//Peers[peerIndex].numFile = numFiles;
+							memcpy(&(Peers[peerIndex].numFile), &numFiles, sizeof(uint32_t));
 							uint8_t pointer = 5;
 							uint8_t counter = pointer;
 						
-							printf("TEST] PUBLISH %u ", Peers[peerIndex].numFile);
-							for ( uint32_t i= 0; i< numFiles; i++) {
+							printf("TEST] PUBLISH %u ", Peers[peerIndex]->numFile);
+							for ( uint32_t i= 0; i< Peers[peerIndex]->numFile; i++) {
 
 								while ( dataBuff[counter] != '\0') {
 									counter++;
 								}
-								memcpy(&(Peers[peerIndex].files[i][0]), &dataBuff[pointer], ((sizeof(uint8_t))*counter+1));
+								memcpy(&(Peers[peerIndex]->files[i][0]), &dataBuff[pointer], ((sizeof(uint8_t))*counter+1));
 								pointer = counter+1;
-								printf("%s ", &(Peers[peerIndex].files[i][0]));
+								printf("%s ", &(Peers[peerIndex]->files[i][0]));
 							}
 							printf("\n");
 
@@ -162,40 +162,38 @@ int main(int argc, char *argv[]) {
 						    //find which peer is connected to socket i
 							int peerIndex;
 							for (peerIndex= 0; peerIndex < currPeers; peerIndex++) {
-								if ( Peers[peerIndex].socket_descriptor == i ) {
+								if ( Peers[peerIndex]->socket_descriptor == i ) {
 									peerIndex = i;
 									break;
 								}
 							}
+							printf("Peer %u calling SEARCH\n", Peers[peerIndex]->id);
+
 							uint8_t counter = 1;
 
 							while (dataBuff[counter] != '\0') {
-									counter++;
-								}
+								counter++;
+							}
 							char fileName[counter+1];
 							memcpy(&fileName, &dataBuff[1], (sizeof(uint8_t))*counter+1);
-							printf("Searching for   %s   \n", fileName);
-
-
-							printf("looking for peer %d \n", currPeers);
+							printf("Searching for %s\n", fileName);
+							// printf("looking for peer %d \n", currPeers);
 							
 							for (int j = 0; j < currPeers; j++) {
-								printf("looking for peer %d \n", j);
+								printf("looking at peer %d with %u files\n", j, Peers[j]->numFile);
 
-								uint32_t number = 0;
-
-								if ((Peers[j].socket_descriptor != i) && (Peers[j].numFile != number)) {
+								if ((Peers[j]->socket_descriptor != i) && (Peers[j]->numFile != 0)) {
 									
-									int index = Peers[j].numFile;
+									int index = Peers[j]->numFile;
 									
-									printf("looking for numfiles %u \n", Peers[j].numFile);
+									printf("looking for numfiles %u \n", Peers[j]->numFile);
 									
 									for (int k = 0; k < index; k++) {
 										printf("Looking through files %u \n", k);
 
 										//not sure if it's actually comparing
 
-										if (strncmp(fileName, (Peers[j].files[k]), sizeof(fileName) == 0)){
+										if (strncmp(fileName, (Peers[j]->files[k]), sizeof(fileName) == 0)){
 											printf("found");
 											//just setup the send message, 4bytes, 4bytes, 2bytes
 											//not sure what the first argument in the send should be
@@ -205,39 +203,28 @@ int main(int argc, char *argv[]) {
 											memcpy(&mesgpeer[7],&Peers[j].address.sin_port,2);
 
 											send(Peers[peerIndex].socket_descriptor,mesgpeer,sizeof(mesgpeer),0);
-
-											
-										} 
 									
-										else {
+										} else {
 											printf("not found");
 										}
 									}
-										
-
-							      }
-
-								 else{
-									 printf("not correct peer \n");
-								 }
-								
+								} else {
+									printf("not correct peer \n");
+								}
 							}
-
-						//strcmp to files in peer struct
-
-
-					} else {	// error or no data received, close connection
-						perror( "streak-talk-server: recv" );
-						close( i );
-						FD_CLR(i, &master); // remove from master set
-						//remove from Peer[] set
-						exit( 1 );
+						} else {	// error or no data received, close connection
+							perror( "streak-talk-server: recv" );
+							close( i );
+							FD_CLR(i, &master); // remove from master set
+							//remove from Peer[] set
+							exit( 1 );
+						}
 					}
 				}
 			}
 		}
 	}
-	}
+	free(Peers);
 	return 0;	     
 }
 
