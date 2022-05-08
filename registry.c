@@ -1,8 +1,5 @@
 //Networks-Prog4 Yashvi Siddhapura & Reema Shahid
 
-/* This code is an updated version of the sample code from "Computer Networks: A Systems
- * Approach," 5th Edition by Larry L. Peterson and Bruce S. Davis. Some code comes from
- * man pages, mostly getaddrinfo(3). */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -19,7 +16,6 @@
 #define MAX_FILENAME_LEN 255
 
 
-
 /*
  * Create, bind and passive open a socket on a local interface for the provided service.
  * Argument matches the second argument to getaddrinfo(3).
@@ -33,7 +29,7 @@ struct peer_entry {
     int socket_descriptor;                   // Socket descriptor for connection to peer
     char files[MAX_FILES][MAX_FILENAME_LEN]; // Files published by peer
     struct sockaddr_in address;              // Contains IP address and port number
-	uint32_t numFile;
+	uint32_t numFile;                        //Total Number of Files Published by Peer
 };
 
 
@@ -109,8 +105,9 @@ int main(int argc, char *argv[]) {
 						if (dataBuff[0] == 0) {	// JOIN request
 							//could check if Peers is full first and refuse connection if so
 							struct peer_entry newPeer;
-
-							memcpy(&newPeer.id, &dataBuff[1], sizeof(uint32_t) );
+							
+                            //populate the struct
+							memcpy(&newPeer.id, &dataBuff[1], sizeof(uint32_t));
 							newPeer.id = ntohl(newPeer.id); 
 							newPeer.socket_descriptor = i;
 							newPeer.numFile = 0;
@@ -122,44 +119,48 @@ int main(int argc, char *argv[]) {
 								printf("error");
 							}
                             
+							//add new peer
 							Peers[currPeers] = newPeer;
 							currPeers++;
+
 							printf("TEST] JOIN %u\n", newPeer.id);
 
      					} else if (dataBuff[0] == 1 ) {	// PUBLISH request
-						// comes in as Network order
 
-							//find which peer is connected to socket i
+			         		//find which peer is connected to socket i
 							int peerIndex;
 							for (peerIndex= 0; peerIndex < currPeers; peerIndex++) {
 								if ( Peers[peerIndex].socket_descriptor == i ) {
 									break;
 								}
 							}
+							//get number of files
 							uint32_t files;
 							memcpy(&files, &dataBuff[1], sizeof(uint32_t));
 							uint32_t numFiles = ntohl(files);
 
-
+                            //add to struct
 							Peers[peerIndex].numFile = numFiles;
-							//memcpy(&Peers[peerIndex].numFile, &numFiles,sizeof(uint32_t));
 							uint8_t pointer = 5;
 							uint8_t counter = pointer;
 							
-							
+							//print number of files
 							printf("TEST] PUBLISH %u ", Peers[peerIndex].numFile);
 							
+							//Go through file name and add them to struct of the peer
 							for (uint32_t i = 0; i < numFiles; i++) {
 								
-								while (dataBuff[pointer] != '\0') {
-									   counter++;
-									
+								while (dataBuff[counter] != '\0') {
+									   counter++;	
 								}
 								memcpy(&(Peers[peerIndex].files[i][0]), &dataBuff[pointer], ((sizeof(uint8_t))*counter+1));
-								//memcpy(&Peers[peerIndex].files[i][0], dataBuff + pointer, ((sizeof(uint8_t))*counter+1));
 								pointer = (counter+1);
-								printf("%s ", &(Peers[peerIndex].files[i][0]));
+								counter += 2;	
+							}
+                            //print all file names
+							for(uint32_t i = 0; i< numFiles; i++){
 								
+								printf("%s ", Peers[peerIndex].files[i]);
 							}
 							
 							printf("\n");
@@ -167,46 +168,55 @@ int main(int argc, char *argv[]) {
 
 
 						} else if (dataBuff[0] == 2) {// SEARCH request
-						// response must by in Network byte order, print locally in Host byte order
-						    //find which peer is connected to socket i
-							int peerIndex;
-							
+						    
+							//find which peer is connected to socket i
+							int peerIndex;	
 							for (peerIndex= 0; peerIndex < currPeers; peerIndex++) {
 								if ( Peers[peerIndex].socket_descriptor == i ) {
 									break;
 								}
 							}
+							//read in file name to search
 							uint8_t counter = 1;
 							while (dataBuff[counter] != '\0') {
 									counter++;
 								}
 							char fileName[counter+1];
 							memcpy(&fileName, &dataBuff[1], (sizeof(uint8_t))*counter+1);
+							
+							//print file name
 							printf("TEST] SEARCH %s", fileName);
 
-							int filefound = 0; 
-						   
+						   int filefound = 0;  //flag for file found
+						   //if file is not found, start seatching
 						   if(filefound == 0){
 
+                            //go through all peers connected
 							for (int j = 0; j < currPeers; j++) {
-								uint32_t number = 0;
 
+								uint32_t number = 0;
+                                //if peer is not the one that is searching and if the file number not 0
 								if ((j != peerIndex) && (Peers[j].numFile != number)) {
 									
-
 									for (uint32_t k = 0; k < Peers[j].numFile; k++) {
 										
+										//compare file name, if the same then output the peer info
 										if (strcmp(fileName, (Peers[j].files[k])) == 0){
+											//store ip address
+											char address[1024];
+											inet_ntop(AF_INET, &(Peers[j].address.sin_addr), address, INET_ADDRSTRLEN);
 
-											printf(" %s:%d\n", inet_ntoa(Peers[j].address.sin_addr),ntohs(Peers[j].address.sin_port));
+											printf(" %u %s:%u\n", Peers[j].id , address, ntohs(Peers[j].address.sin_port));
 											
-											//send message, 4bytes, 4bytes, 2bytes
+											//send message, 4bytes, 4bytes, 2bytes in network order
 											uint8_t mesgpeer[10];
-											memcpy(&mesgpeer[0],&Peers[j].id, 4);
-											memcpy(&mesgpeer[3],&Peers[j].address.sin_addr,4);
-											memcpy(&mesgpeer[7],&Peers[j].address.sin_port,2);
-
+											uint32_t id = htonl(Peers[j].id);
+											memcpy(&mesgpeer[0], &id, 4);
+											memcpy(&mesgpeer[4],&Peers[j].address.sin_addr,4);
+											memcpy(&mesgpeer[8],&Peers[j].address.sin_port,2);
+											
 											send(Peers[peerIndex].socket_descriptor,mesgpeer,sizeof(mesgpeer),0);
+											
 											filefound = 1;
 											break;
 											
@@ -217,7 +227,7 @@ int main(int argc, char *argv[]) {
 								}
 							}
 						}
-								
+						//if file not found then break		
 						else if (filefound == 1){
 							printf(" 0 0.0.0.0:0\n");
 							uint8_t messpeer[10];
@@ -228,7 +238,7 @@ int main(int argc, char *argv[]) {
 							 break;
 							}						
 		    
-					} else {	// error or no data received, close connection
+					} else { // error or no data received, close connection
 						perror( "stream-talk-server: recv" );
 						close( i );
 						FD_CLR(i, &master); // remove from master set
@@ -238,8 +248,8 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-	}
-	}
+	 }
+  }
 	return 0;	     
 }
 
